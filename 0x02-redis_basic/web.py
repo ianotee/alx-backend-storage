@@ -1,42 +1,34 @@
 #!/usr/bin/env python3
-"""In this tasks, we will implement a get_page function
-(prototype: def get_page(url: str) -> str:)."""
-
-
+"""
+ uses the requests module to obtain the HTML content of a
+ particular URL and returns it.
+"""
 import redis
 import requests
 from functools import wraps
+from typing import Callable
 
-r = redis.Redis()
+redis_connection = redis.Redis()
 
 
-def url_access_count(method):
-    """decorator for get_page function"""
+def data_cache(method: Callable) -> Callable:
+    """it caches the output of the fetched data"""
+
     @wraps(method)
-    def wrapper(url):
+    def wrapper(url) -> str:
         """wrapper function"""
-        key = "cached:" + url
-        cached_value = r.get(key)
-        if cached_value:
-            return cached_value.decode("utf-8")
-
-            # Get new content and update cache
-        key_count = "count:" + url
-        html_content = method(url)
-
-        r.incr(key_count)
-        r.set(key, html_content, ex=10)
-        r.expire(key, 10)
-        return html_content
+        redis_connection.incr(f"count:{url}")
+        output = redis_connection.get(f"output:{url}")
+        if output:
+            return output.decode('utf-8')
+        output = method(url)
+        redis_connection.set(f"count:{url}", 0)
+        redis_connection.setex(f"output:{url}", 10, output)
+        return output
     return wrapper
 
 
-@url_access_count
+@data_cache
 def get_page(url: str) -> str:
-    """obtain the HTML content of a particular"""
-    results = requests.get(url)
-    return results.text
-
-
-if __name__ == "__main__":
-    get_page('http://slowwly.robertomurray.co.uk')
+    """returns content of a url after caching"""
+    return requests.get(url).text
